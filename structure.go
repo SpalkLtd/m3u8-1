@@ -82,6 +82,7 @@ const (
 */
 type MediaPlaylist struct {
 	TargetDuration float64
+	BaseURI        string
 	SeqNo          uint64 // EXT-X-MEDIA-SEQUENCE
 	Segments       []*MediaSegment
 	Args           string // optional arguments placed after URIs (URI?Args)
@@ -123,6 +124,7 @@ type MasterPlaylist struct {
 	CypherVersion string // non-standard tag for Widevine (see also WV struct)
 	buf           bytes.Buffer
 	ver           uint8
+	Alternatives  []*Alternative
 }
 
 // This structure represents variants for master playlist.

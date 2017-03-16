@@ -65,6 +65,15 @@ func (p *MasterPlaylist) Append(uri string, chunklist *MediaPlaylist, params Var
 	p.buf.Reset()
 }
 
+// Append alternative media streams to a master playlist.
+// These can be audio, subtitles or (for some media encodings) data streams.
+// If the uri is empty in the supplied alternative the media stream MUST be present in all
+func (p *MasterPlaylist) AppendAlternative(opts *Alternative) {
+	p.Alternatives = append(p.Alternatives, opts)
+	version(&p.ver, 4)
+	p.buf.Reset()
+}
+
 func (p *MasterPlaylist) ResetCache() {
 	p.buf.Reset()
 }
@@ -78,6 +87,62 @@ func (p *MasterPlaylist) Encode() *bytes.Buffer {
 	p.buf.WriteString("#EXTM3U\n#EXT-X-VERSION:")
 	p.buf.WriteString(strver(p.ver))
 	p.buf.WriteRune('\n')
+
+	for _, alt := range p.Alternatives {
+		// Make sure that we only write out an alternative once
+
+		p.buf.WriteString("#EXT-X-MEDIA:")
+		if alt.Type != "" {
+			p.buf.WriteString("TYPE=") // Type should not be quoted
+			p.buf.WriteString(alt.Type)
+		}
+		if alt.GroupId != "" {
+			p.buf.WriteString(",GROUP-ID=\"")
+			p.buf.WriteString(alt.GroupId)
+			p.buf.WriteRune('"')
+		}
+		if alt.Name != "" {
+			p.buf.WriteString(",NAME=\"")
+			p.buf.WriteString(alt.Name)
+			p.buf.WriteRune('"')
+		}
+		p.buf.WriteString(",DEFAULT=")
+		if alt.Default {
+			p.buf.WriteString("YES")
+		} else {
+			p.buf.WriteString("NO")
+		}
+		if alt.Autoselect != "" {
+			p.buf.WriteString(",AUTOSELECT=")
+			p.buf.WriteString(alt.Autoselect)
+		}
+		if alt.Language != "" {
+			p.buf.WriteString(",LANGUAGE=\"")
+			p.buf.WriteString(alt.Language)
+			p.buf.WriteRune('"')
+		}
+		if alt.Forced != "" {
+			p.buf.WriteString(",FORCED=\"")
+			p.buf.WriteString(alt.Forced)
+			p.buf.WriteRune('"')
+		}
+		if alt.Characteristics != "" {
+			p.buf.WriteString(",CHARACTERISTICS=\"")
+			p.buf.WriteString(alt.Characteristics)
+			p.buf.WriteRune('"')
+		}
+		if alt.Subtitles != "" {
+			p.buf.WriteString(",SUBTITLES=\"")
+			p.buf.WriteString(alt.Subtitles)
+			p.buf.WriteRune('"')
+		}
+		if alt.URI != "" {
+			p.buf.WriteString(",URI=\"")
+			p.buf.WriteString(alt.URI)
+			p.buf.WriteRune('"')
+		}
+		p.buf.WriteRune('\n')
+	}
 
 	var altsWritten map[string]bool = make(map[string]bool)
 
