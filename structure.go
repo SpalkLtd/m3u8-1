@@ -125,6 +125,7 @@ type MasterPlaylist struct {
 	buf           bytes.Buffer
 	ver           uint8
 	Alternatives  []*Alternative
+	URI           string
 }
 
 // This structure represents variants for master playlist.
