@@ -356,6 +356,15 @@ func (p *MediaPlaylist) AppendSegment(seg *MediaSegment) error {
 	if p.head == p.tail && p.count > 0 {
 		return ErrPlaylistFull
 	}
+	if p.count != uint(len(p.Segments)) {
+		for {
+			if p.Segments[p.tail] != nil {
+				p.tail += 1
+			} else {
+				break
+			}
+		}
+	}
 	p.Segments[p.tail] = seg
 	p.tail = (p.tail + 1) % p.capacity
 	p.count++
@@ -523,7 +532,8 @@ func (p *MediaPlaylist) Encode() *bytes.Buffer {
 	)
 
 	head := p.head
-	count := p.count
+	// count := p.count
+	count := p.SegmentCount()
 	for i := uint(0); (i < p.winsize || p.winsize == 0) && count > 0; count-- {
 		seg = p.Segments[head]
 		head = (head + 1) % p.capacity

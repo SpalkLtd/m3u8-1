@@ -634,3 +634,12 @@ func decodeLineOfMediaPlaylist(p *MediaPlaylist, wv *WV, state *decodingState, l
 	}
 	return err
 }
+
+func (pl *MediaPlaylist) SegmentCount() int {
+	for i, v := range pl.Segments {
+		if v == nil {
+			return i
+		}
+	}
+	return len(pl.Segments)
+}
