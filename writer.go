@@ -379,7 +379,11 @@ func (p *MediaPlaylist) AppendSegment(seg *MediaSegment) error {
 func (p *MediaPlaylist) InsertSegment(seg *MediaSegment, id uint64) error {
 	if p.Segments[id] == nil || p.Segments[id] == &discontinuity {
 		p.Segments[id] = seg
-		p.tail = uint(id)
+		if p.tail < uint(id) {
+			p.tail = uint(id)
+			p.count = uint(id)
+		}
+		p.buf.Reset()
 		for i := id - 1; ; i-- {
 			switch p.Segments[i] {
 			case nil:
