@@ -359,7 +359,7 @@ func (p *MediaPlaylist) AppendSegment(seg *MediaSegment) error {
 	if p.count != uint(len(p.Segments)) {
 		for {
 			if p.Segments[p.tail] != nil {
-				p.tail += 1
+				p.tail++
 			} else {
 				break
 			}
@@ -375,7 +375,28 @@ func (p *MediaPlaylist) AppendSegment(seg *MediaSegment) error {
 	return nil
 }
 
-// Combines two operations: firstly it removes one chunk from the head of chunk slice and move pointer to
+//InsertSegment will add a segment at the specified id, and backfill nil segments with discontnuities
+func (p *MediaPlaylist) InsertSegment(seg *MediaSegment, id uint64) error {
+	if p.Segments[id] == nil || p.Segments[id] == &discontinuity {
+		p.Segments[id] = seg
+		p.tail = uint(id)
+		for i := id - 1; ; i-- {
+			switch p.Segments[i] {
+			case nil:
+				p.Segments[i] = &discontinuity
+			case &discontinuity:
+				continue
+			default:
+				return nil
+			}
+		}
+	}
+	return ErrSegmentAlreadyExists
+}
+
+var ErrSegmentAlreadyExists = errors.New("segment already exists at index")
+
+// Slide combines two operations: firstly it removes one chunk from the head of chunk slice and move pointer to
 // next chunk. Secondly it appends one chunk to the tail of chunk slice. Useful for sliding playlists.
 // This operation does reset cache.
 func (p *MediaPlaylist) Slide(uri string, duration float64, title string) {
