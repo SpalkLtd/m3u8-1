@@ -674,11 +674,14 @@ func (p *MediaPlaylist) Count() uint {
 }
 
 // Close sliding playlist and make them fixed.
+// Only close if they are not already
 func (p *MediaPlaylist) Close() {
-	if p.buf.Len() > 0 {
-		p.buf.WriteString("#EXT-X-ENDLIST\n")
+	if !p.Closed {
+		if p.buf.Len() > 0 {
+			p.buf.WriteString("#EXT-X-ENDLIST\n")
+		}
+		p.Closed = true
 	}
-	p.Closed = true
 }
 
 // Set encryption key appeared once in header of the playlist (pointer to MediaPlaylist.Key).
