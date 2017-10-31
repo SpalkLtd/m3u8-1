@@ -356,6 +356,15 @@ func (p *MediaPlaylist) AppendSegment(seg *MediaSegment) error {
 	if p.head == p.tail && p.count > 0 {
 		return ErrPlaylistFull
 	}
+	if p.count != uint(len(p.Segments)) {
+		for {
+			if p.Segments[p.tail] != nil {
+				p.tail++
+			} else {
+				break
+			}
+		}
+	}
 	p.Segments[p.tail] = seg
 	p.tail = (p.tail + 1) % p.capacity
 	p.count++
@@ -548,7 +557,8 @@ func (p *MediaPlaylist) Encode() *bytes.Buffer {
 	)
 
 	head := p.head
-	count := p.count
+	// count := p.count
+	count := p.SegmentCount()
 	for i := uint(0); (i < p.winsize || p.winsize == 0) && count > 0; count-- {
 		seg = p.Segments[head]
 		head = (head + 1) % p.capacity
@@ -629,7 +639,11 @@ func (p *MediaPlaylist) Encode() *bytes.Buffer {
 		p.buf.WriteRune(',')
 		p.buf.WriteString(seg.Title)
 		p.buf.WriteRune('\n')
-		p.buf.WriteString(seg.URI)
+		if strings.HasPrefix(seg.URI, "http") {
+			p.buf.WriteString(seg.URI)
+		} else {
+			p.buf.WriteString(p.BaseURI + seg.URI)
+		}
 		if p.Args != "" {
 			p.buf.WriteRune('?')
 			p.buf.WriteString(p.Args)
@@ -664,11 +678,14 @@ func (p *MediaPlaylist) Count() uint {
 }
 
 // Close sliding playlist and make them fixed.
+// Only close if they are not already
 func (p *MediaPlaylist) Close() {
-	if p.buf.Len() > 0 {
-		p.buf.WriteString("#EXT-X-ENDLIST\n")
+	if !p.Closed {
+		if p.buf.Len() > 0 {
+			p.buf.WriteString("#EXT-X-ENDLIST\n")
+		}
+		p.Closed = true
 	}
-	p.Closed = true
 }
 
 // Set encryption key appeared once in header of the playlist (pointer to MediaPlaylist.Key).

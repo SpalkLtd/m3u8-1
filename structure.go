@@ -128,12 +128,28 @@ type MasterPlaylist struct {
 	URI           string
 }
 
+func (p *MasterPlaylist) GetURL() string {
+	return p.URI
+}
+
+func (p *MasterPlaylist) SetURL(s string) {
+	p.URI = s
+}
+
 // This structure represents variants for master playlist.
 // Variants included in a master playlist and point to media playlists.
 type Variant struct {
 	URI       string
 	Chunklist *MediaPlaylist
 	VariantParams
+}
+
+func (v *Variant) GetURL() string {
+	return v.URI
+}
+
+func (v *Variant) SetURL(s string) {
+	v.URI = s
 }
 
 // This structure represents additional parameters for a variant
@@ -166,6 +182,14 @@ type Alternative struct {
 	Subtitles       string
 }
 
+func (a *Alternative) GetURL() string {
+	return a.URI
+}
+
+func (a *Alternative) SetURL(s string) {
+	a.URI = s
+}
+
 // This structure represents a media segment included in a media playlist.
 // Media segment may be encrypted.
 // Widevine supports own tags for encryption metadata.
@@ -183,6 +207,14 @@ type MediaSegment struct {
 	ProgramDateTime time.Time // EXT-X-PROGRAM-DATE-TIME tag associates the first sample of a media segment with an absolute date and/or time
 }
 
+func (seg *MediaSegment) GetURL() string {
+	return seg.URI
+}
+
+func (seg *MediaSegment) SetURL(s string) {
+	seg.URI = s
+}
+
 type SCTE struct {
 	Cue  string
 	ID   string
@@ -198,6 +230,14 @@ type Key struct {
 	IV                string
 	Keyformat         string
 	Keyformatversions string
+}
+
+func (k *Key) GetURL() string {
+	return k.URI
+}
+
+func (k *Key) SetURL(s string) {
+	k.URI = s
 }
 
 // This structure represents specifies how to obtain the Media
@@ -265,4 +305,8 @@ type decodingState struct {
 	xkey               *Key
 	xmap               *Map
 	scte               *SCTE
+}
+
+var discontinuity = MediaSegment{
+	Discontinuity: true,
 }
