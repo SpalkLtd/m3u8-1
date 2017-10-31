@@ -4,7 +4,7 @@ package m3u8
  Part of M3U8 parser & generator library.
  This file defines functions related to playlist parsing.
 
- Copyright 2013-2016 The Project Developers.
+ Copyright 2013-2017 The Project Developers.
  See the AUTHORS and LICENSE files at the top-level directory of this distribution
  and at https://github.com/grafov/m3u8/
 
@@ -22,16 +22,23 @@ import (
 	"time"
 )
 
-var reKeyValue = regexp.MustCompile(`([a-zA-Z_-]+)=("[^"]+"|[^",]+)`)
+var reKeyValue = regexp.MustCompile(`([a-zA-Z0-9_-]+)=("[^"]+"|[^",]+)`)
 
-// Parse master playlist from the buffer.
-// If `strict` parameter is true then return first syntax error.
+// Allow globally apply and/or override Time Parser function.
+// Available variants:
+// 		* FullTimeParse - implements full featured ISO/IEC 8601:2004
+//		* StrictTimeParse - implements only RFC3339 Nanoseconds format
+var TimeParse func(value string) (time.Time, error) = FullTimeParse
+
+// Decode parses a master playlist passed from the buffer. If `strict`
+// parameter is true then it returns first syntax error.
 func (p *MasterPlaylist) Decode(data bytes.Buffer, strict bool) error {
 	return p.decode(&data, strict)
 }
 
-// Parse master playlist from the io.Reader stream.
-// If `strict` parameter is true then return first syntax error.
+// DecodeFrom parses a master playlist passed from the io.Reader
+// stream.  If `strict` parameter is true then it returns first syntax
+// error.
 func (p *MasterPlaylist) DecodeFrom(reader io.Reader, strict bool) error {
 	buf := new(bytes.Buffer)
 	_, err := buf.ReadFrom(reader)
@@ -65,14 +72,15 @@ func (p *MasterPlaylist) decode(buf *bytes.Buffer, strict bool) error {
 	return nil
 }
 
-// Parse media playlist from the buffer.
-// If `strict` parameter is true then return first syntax error.
+// Decode parses a media playlist passed from the buffer. If `strict`
+// parameter is true then return first syntax error.
 func (p *MediaPlaylist) Decode(data bytes.Buffer, strict bool) error {
 	return p.decode(&data, strict)
 }
 
-// Parse media playlist from the io.Reader stream.
-// If `strict` parameter is true then return first syntax error.
+// DecodeFrom parses a media playlist passed from the io.Reader
+// stream. If `strict` parameter is true then it returns first syntax
+// error.
 func (p *MediaPlaylist) DecodeFrom(reader io.Reader, strict bool) error {
 	buf := new(bytes.Buffer)
 	_, err := buf.ReadFrom(reader)
@@ -112,12 +120,14 @@ func (p *MediaPlaylist) decode(buf *bytes.Buffer, strict bool) error {
 	return nil
 }
 
-// Detect playlist type and decode it from the buffer.
+// Decode detects type of playlist and decodes it. It accepts bytes
+// buffer as input.
 func Decode(data bytes.Buffer, strict bool) (Playlist, ListType, error) {
 	return decode(&data, strict)
 }
 
-// Detect playlist type and decode it from input stream.
+// DecodeFrom detects type of playlist and decodes it. It accepts data
+// conformed with io.Reader.
 func DecodeFrom(reader io.Reader, strict bool) (Playlist, ListType, error) {
 	buf := new(bytes.Buffer)
 	_, err := buf.ReadFrom(reader)
@@ -127,7 +137,8 @@ func DecodeFrom(reader io.Reader, strict bool) (Playlist, ListType, error) {
 	return decode(buf, strict)
 }
 
-// Detect playlist type and decode it. May be used as decoder for both master and media playlists.
+// Detect playlist type and decode it. May be used as decoder for both
+// master and media playlists.
 func decode(buf *bytes.Buffer, strict bool) (Playlist, ListType, error) {
 	var eof bool
 	var line string
@@ -187,10 +198,8 @@ func decode(buf *bytes.Buffer, strict bool) (Playlist, ListType, error) {
 			media.SetWinSize(0)
 		}
 		return media, MEDIA, nil
-	default:
-		return nil, state.listType, errors.New("Can't detect playlist type")
 	}
-	return nil, state.listType, errors.New("This return is impossible. Saved for compatibility with go 1.0")
+	return nil, state.listType, errors.New("Can't detect playlist type")
 }
 
 func decodeParamsLine(line string) map[string]string {
@@ -350,7 +359,10 @@ func decodeLineOfMediaPlaylist(p *MediaPlaylist, wv *WV, state *decodingState, l
 		state.listType = MEDIA
 		sepIndex := strings.Index(line, ",")
 		if sepIndex == -1 {
-			break
+			if strict {
+				return fmt.Errorf("could not parse: %q", line)
+			}
+			sepIndex = len(line)
 		}
 		duration := line[8:sepIndex]
 		if len(duration) > 0 {
@@ -388,8 +400,7 @@ func decodeLineOfMediaPlaylist(p *MediaPlaylist, wv *WV, state *decodingState, l
 		}
 		if state.tagSCTE35 {
 			state.tagSCTE35 = false
-			scte := *state.scte
-			if err = p.SetSCTE(scte.Cue, scte.ID, scte.Time); strict && err != nil {
+			if err = p.SetSCTE35(state.scte); strict && err != nil {
 				return err
 			}
 		}
@@ -497,7 +508,7 @@ func decodeLineOfMediaPlaylist(p *MediaPlaylist, wv *WV, state *decodingState, l
 	case !state.tagProgramDateTime && strings.HasPrefix(line, "#EXT-X-PROGRAM-DATE-TIME:"):
 		state.tagProgramDateTime = true
 		state.listType = MEDIA
-		if state.programDateTime, err = time.Parse(DATETIME, line[25:]); strict && err != nil {
+		if state.programDateTime, err = TimeParse(line[25:]); strict && err != nil {
 			return err
 		}
 	case !state.tagRange && strings.HasPrefix(line, "#EXT-X-BYTERANGE:"):
@@ -517,6 +528,7 @@ func decodeLineOfMediaPlaylist(p *MediaPlaylist, wv *WV, state *decodingState, l
 		state.tagSCTE35 = true
 		state.listType = MEDIA
 		state.scte = new(SCTE)
+		state.scte.Syntax = SCTE35_67_2014
 		for attribute, value := range decodeParamsLine(line[12:]) {
 			switch attribute {
 			case "CUE":
@@ -527,6 +539,36 @@ func decodeLineOfMediaPlaylist(p *MediaPlaylist, wv *WV, state *decodingState, l
 				state.scte.Time, _ = strconv.ParseFloat(value, 64)
 			}
 		}
+	case !state.tagSCTE35 && strings.HasPrefix(line, "#EXT-OATCLS-SCTE35:"):
+		// EXT-OATCLS-SCTE35 contains the SCTE35 tag, EXT-X-CUE-OUT contains duration
+		state.tagSCTE35 = true
+		state.scte = new(SCTE)
+		state.scte.Syntax = SCTE35_OATCLS
+		state.scte.Cue = line[19:]
+	case state.tagSCTE35 && state.scte.Syntax == SCTE35_OATCLS && strings.HasPrefix(line, "#EXT-X-CUE-OUT:"):
+		// EXT-OATCLS-SCTE35 contains the SCTE35 tag, EXT-X-CUE-OUT contains duration
+		state.scte.Time, _ = strconv.ParseFloat(line[15:], 64)
+		state.scte.CueType = SCTE35Cue_Start
+	case !state.tagSCTE35 && strings.HasPrefix(line, "#EXT-X-CUE-OUT-CONT:"):
+		state.tagSCTE35 = true
+		state.scte = new(SCTE)
+		state.scte.Syntax = SCTE35_OATCLS
+		state.scte.CueType = SCTE35Cue_Mid
+		for attribute, value := range decodeParamsLine(line[20:]) {
+			switch attribute {
+			case "SCTE35":
+				state.scte.Cue = value
+			case "Duration":
+				state.scte.Time, _ = strconv.ParseFloat(value, 64)
+			case "ElapsedTime":
+				state.scte.Elapsed, _ = strconv.ParseFloat(value, 64)
+			}
+		}
+	case !state.tagSCTE35 && line == "#EXT-X-CUE-IN":
+		state.tagSCTE35 = true
+		state.scte = new(SCTE)
+		state.scte.Syntax = SCTE35_OATCLS
+		state.scte.CueType = SCTE35Cue_End
 	case !state.tagDiscontinuity && strings.HasPrefix(line, "#EXT-X-DISCONTINUITY"):
 		state.tagDiscontinuity = true
 		state.listType = MEDIA
@@ -642,4 +684,28 @@ func (pl *MediaPlaylist) SegmentCount() int {
 		}
 	}
 	return len(pl.Segments)
+}
+
+// StrictTimeParse implements RFC3339 with Nanoseconds accuracy.
+func StrictTimeParse(value string) (time.Time, error) {
+	return time.Parse(DATETIME, value)
+}
+
+// FullTimeParse implements ISO/IEC 8601:2004.
+func FullTimeParse(value string) (time.Time, error) {
+	layouts := []string{
+		"2006-01-02T15:04:05.999999999Z0700",
+		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02T15:04:05.999999999Z07",
+	}
+	var (
+		err error
+		t   time.Time
+	)
+	for _, layout := range layouts {
+		if t, err = time.Parse(layout, value); err == nil {
+			return t, nil
+		}
+	}
+	return t, err
 }
