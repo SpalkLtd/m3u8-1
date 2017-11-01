@@ -80,10 +80,10 @@ func (p *MasterPlaylist) ResetCache() {
 
 // Generate output in M3U8 format.
 func (p *MasterPlaylist) Encode() *bytes.Buffer {
-	if p.buf.Len() > 0 {
-		return &p.buf
-	}
-
+	//Reset the buffer so we always encode a new copy of the string.
+	// If you want to do fancy caching - do it in you application code
+	// not a library.
+	p.buf.Reset()
 	p.buf.WriteString("#EXTM3U\n#EXT-X-VERSION:")
 	p.buf.WriteString(strver(p.ver))
 	p.buf.WriteRune('\n')
