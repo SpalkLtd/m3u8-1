@@ -73,7 +73,7 @@ You may use API methods to fill structures or create them manually to generate p
 		panic(fmt.Sprintf("Creating of media playlist failed: %s", e))
 	}
 	for i := 0; i < 5; i++ {
-		e = p.Add(fmt.Sprintf("test%d.ts", i), 6.0, "")
+		e = p.Append(fmt.Sprintf("test%d.ts", i), 6.0, "")
 		if e != nil {
 			panic(fmt.Sprintf("Add segment #%d to a media playlist failed: %s", i, e))
 		}
@@ -129,14 +129,6 @@ Project maintainers:
 
 * Bradley Falzon @bradleyfalzon
 * Alexander Grafov @grafov
-
-Development rules:
-
-* After complete testing and one week usage with my prober for HLS [Stream Surfer](http://streamsurfer.org) it may be released as new library version.
-* Each new API call or M3U8 tag accompanied by at least with one unit test till new release (this rule will be apply after v1.0).
-* Versioning scheme follows http://semver.org rules (but versions till v1.0 not support bacward compatibility, see release notes carefully).
-
-Project dashboard: https://waffle.io/grafov/m3u8 [![Stories in Ready](https://badge.waffle.io/grafov/m3u8.png?label=ready&title=Ready)](https://waffle.io/grafov/m3u8)
 
 State of code coverage: https://gocover.io/github.com/grafov/m3u8
 

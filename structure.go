@@ -4,7 +4,7 @@ package m3u8
  Part of M3U8 parser & generator library.
  This file defines data structures related to package.
 
- Copyright 2013-2016 The Project Developers.
+ Copyright 2013-2017 The Project Developers.
  See the AUTHORS and LICENSE files at the top-level directory of this distribution
  and at https://github.com/grafov/m3u8/
 
@@ -50,6 +50,27 @@ const (
 	// use 0 for not defined type
 	EVENT MediaType = iota + 1
 	VOD
+)
+
+// SCTE35Syntax defines the format of the SCTE-35 cue points which do not use
+// the draft-pantos-http-live-streaming-19 EXT-X-DATERANGE tag and instead
+// have their own custom tags
+type SCTE35Syntax uint
+
+const (
+	// SCTE35_67_2014 will be the default due to backwards compatibility reasons.
+	SCTE35_67_2014 SCTE35Syntax = iota // SCTE35_67_2014 defined in http://www.scte.org/documents/pdf/standards/SCTE%2067%202014.pdf
+	SCTE35_OATCLS                      // SCTE35_OATCLS is a non-standard but common format
+)
+
+// SCTE35CueType defines the type of cue point, used by readers and writers to
+// write a different syntax
+type SCTE35CueType uint
+
+const (
+	SCTE35Cue_Start SCTE35CueType = iota // SCTE35Cue_Start indicates an out cue point
+	SCTE35Cue_Mid                        // SCTE35Cue_Mid indicates a segment between start and end cue points
+	SCTE35Cue_End                        // SCTE35Cue_End indicates an in cue point
 )
 
 /*
@@ -203,7 +224,7 @@ type MediaSegment struct {
 	Key             *Key      // EXT-X-KEY displayed before the segment and means changing of encryption key (in theory each segment may have own key)
 	Map             *Map      // EXT-X-MAP displayed before the segment
 	Discontinuity   bool      // EXT-X-DISCONTINUITY indicates an encoding discontinuity between the media segment that follows it and the one that preceded it (i.e. file format, number and type of tracks, encoding parameters, encoding sequence, timestamp sequence)
-	SCTE            *SCTE     // EXT-SCTE35 used for Ad signaling in HLS
+	SCTE            *SCTE     // SCTE-35 used for Ad signaling in HLS
 	ProgramDateTime time.Time // EXT-X-PROGRAM-DATE-TIME tag associates the first sample of a media segment with an absolute date and/or time
 }
 
@@ -215,10 +236,14 @@ func (seg *MediaSegment) SetURL(s string) {
 	seg.URI = s
 }
 
+// SCTE holds custom, non EXT-X-DATERANGE, SCTE-35 tags
 type SCTE struct {
-	Cue  string
-	ID   string
-	Time float64
+	Syntax  SCTE35Syntax  // Syntax defines the format of the SCTE-35 cue tag
+	CueType SCTE35CueType // CueType defines whether the cue is a start, mid, end (if applicable)
+	Cue     string
+	ID      string
+	Time    float64
+	Elapsed float64
 }
 
 // This structure represents information about stream encryption.

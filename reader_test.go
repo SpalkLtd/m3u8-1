@@ -1,7 +1,7 @@
 /*
  Playlist parsing tests.
 
- Copyright 2013-2016 The Project Developers.
+ Copyright 2013-2017 The Project Developers.
  See the AUTHORS and LICENSE files at the top-level directory of this distribution
  and at https://github.com/grafov/m3u8/
 
@@ -11,6 +11,7 @@ package m3u8
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"reflect"
@@ -97,6 +98,27 @@ func TestDecodeMasterPlaylistWithAlternatives(t *testing.T) {
 		}
 	}
 	// fmt.Println(p.Encode().String())
+}
+
+func TestDecodeMasterPlaylistWithClosedCaptionEqNone(t *testing.T) {
+	f, err := os.Open("sample-playlists/master-with-closed-captions-eq-none.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := NewMasterPlaylist()
+	err = p.DecodeFrom(bufio.NewReader(f), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(p.Variants) != 3 {
+		t.Fatal("not all variants in master playlist parsed")
+	}
+	for _, v := range p.Variants {
+		if v.Captions != "NONE" {
+			t.Fatal("variant field for CLOSED-CAPTIONS should be equal to NONE but it equals", v.Captions)
+		}
+	}
 }
 
 // Decode a master playlist with Name tag in EXT-X-STREAM-INF
@@ -198,6 +220,57 @@ func TestDecodeMediaPlaylist(t *testing.T) {
 	//fmt.Println(p.Encode().String()), stream.Name}
 }
 
+func TestDecodeMediaPlaylistExtInfNonStrict2(t *testing.T) {
+	header := `#EXTM3U
+#EXT-X-TARGETDURATION:10
+#EXT-X-VERSION:3
+#EXT-X-MEDIA-SEQUENCE:0
+%s
+`
+
+	tests := []struct {
+		strict      bool
+		extInf      string
+		wantError   bool
+		wantSegment *MediaSegment
+	}{
+		// strict mode on
+		{true, "#EXTINF:10.000,", false, &MediaSegment{Duration: 10.0, Title: ""}},
+		{true, "#EXTINF:10.000,Title", false, &MediaSegment{Duration: 10.0, Title: "Title"}},
+		{true, "#EXTINF:10.000,Title,Track", false, &MediaSegment{Duration: 10.0, Title: "Title,Track"}},
+		{true, "#EXTINF:invalid,", true, nil},
+		{true, "#EXTINF:10.000", true, nil},
+
+		// strict mode off
+		{false, "#EXTINF:10.000,", false, &MediaSegment{Duration: 10.0, Title: ""}},
+		{false, "#EXTINF:10.000,Title", false, &MediaSegment{Duration: 10.0, Title: "Title"}},
+		{false, "#EXTINF:10.000,Title,Track", false, &MediaSegment{Duration: 10.0, Title: "Title,Track"}},
+		{false, "#EXTINF:invalid,", false, &MediaSegment{Duration: 0.0, Title: ""}},
+		{false, "#EXTINF:10.000", false, &MediaSegment{Duration: 10.0, Title: ""}},
+	}
+
+	for _, test := range tests {
+		p, err := NewMediaPlaylist(1, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		reader := bytes.NewBufferString(fmt.Sprintf(header, test.extInf))
+		err = p.DecodeFrom(reader, test.strict)
+		if test.wantError {
+			if err == nil {
+				t.Errorf("expected error but have: %v", err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !reflect.DeepEqual(p.Segments[0], test.wantSegment) {
+			t.Errorf("\nhave: %+v\nwant: %+v", p.Segments[0], test.wantSegment)
+		}
+	}
+}
+
 func TestDecodeMediaPlaylistWithWidevine(t *testing.T) {
 	f, err := os.Open("sample-playlists/widevine-bitrate.m3u8")
 	if err != nil {
@@ -293,6 +366,83 @@ func TestDecodeMediaPlaylistAutoDetectExtend(t *testing.T) {
 	var exp uint = 40001
 	if pp.Count() != exp {
 		t.Errorf("Media segment count %v != %v", pp.Count(), exp)
+	}
+}
+
+// Test for FullTimeParse of EXT-X-PROGRAM-DATE-TIME
+// We testing ISO/IEC 8601:2004 where we can get time in UTC, UTC with Nanoseconds
+// timeZone in formats '±00:00', '±0000', '±00'
+// m3u8.FullTimeParse()
+func TestFullTimeParse(t *testing.T) {
+	var timestamps = []struct {
+		name  string
+		value string
+	}{
+		{"time_in_utc", "2006-01-02T15:04:05Z"},
+		{"time_in_utc_nano", "2006-01-02T15:04:05.123456789Z"},
+		{"time_with_positive_zone_and_colon", "2006-01-02T15:04:05+01:00"},
+		{"time_with_positive_zone_no_colon", "2006-01-02T15:04:05+0100"},
+		{"time_with_positive_zone_2digits", "2006-01-02T15:04:05+01"},
+		{"time_with_negative_zone_and_colon", "2006-01-02T15:04:05-01:00"},
+		{"time_with_negative_zone_no_colon", "2006-01-02T15:04:05-0100"},
+		{"time_with_negative_zone_2digits", "2006-01-02T15:04:05-01"},
+	}
+
+	var err error
+	for _, tstamp := range timestamps {
+		_, err = FullTimeParse(tstamp.value)
+		if err != nil {
+			t.Errorf("FullTimeParse Error at %s [%s]: %s", tstamp.name, tstamp.value, err)
+		}
+	}
+}
+
+// Test for StrictTimeParse of EXT-X-PROGRAM-DATE-TIME
+// We testing Strict format of RFC3339 where we can get time in UTC, UTC with Nanoseconds
+// timeZone in formats '±00:00', '±0000', '±00'
+// m3u8.StrictTimeParse()
+func TestStrictTimeParse(t *testing.T) {
+	var timestamps = []struct {
+		name  string
+		value string
+	}{
+		{"time_in_utc", "2006-01-02T15:04:05Z"},
+		{"time_in_utc_nano", "2006-01-02T15:04:05.123456789Z"},
+		{"time_with_positive_zone_and_colon", "2006-01-02T15:04:05+01:00"},
+		{"time_with_negative_zone_and_colon", "2006-01-02T15:04:05-01:00"},
+	}
+
+	var err error
+	for _, tstamp := range timestamps {
+		_, err = StrictTimeParse(tstamp.value)
+		if err != nil {
+			t.Errorf("StrictTimeParse Error at %s [%s]: %s", tstamp.name, tstamp.value, err)
+		}
+	}
+}
+
+func TestMediaPlaylistWithOATCLSSCTE35Tag(t *testing.T) {
+	f, err := os.Open("sample-playlists/media-playlist-with-oatcls-scte35.m3u8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _, err := DecodeFrom(bufio.NewReader(f), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pp := p.(*MediaPlaylist)
+
+	expect := map[int]*SCTE{
+		0: {Syntax: SCTE35_OATCLS, CueType: SCTE35Cue_Start, Cue: "/DAlAAAAAAAAAP/wFAUAAAABf+/+ANgNkv4AFJlwAAEBAQAA5xULLA==", Time: 15},
+		1: {Syntax: SCTE35_OATCLS, CueType: SCTE35Cue_Mid, Cue: "/DAlAAAAAAAAAP/wFAUAAAABf+/+ANgNkv4AFJlwAAEBAQAA5xULLA==", Time: 15, Elapsed: 8.844},
+		2: {Syntax: SCTE35_OATCLS, CueType: SCTE35Cue_End},
+	}
+	for i := 0; i < int(pp.Count()); i++ {
+		if !reflect.DeepEqual(pp.Segments[i].SCTE, expect[i]) {
+			t.Errorf("OATCLS SCTE35 segment %v (uri: %v)\ngot: %#v\nexp: %#v",
+				i, pp.Segments[i].URI, pp.Segments[i].SCTE, expect[i],
+			)
+		}
 	}
 }
 
